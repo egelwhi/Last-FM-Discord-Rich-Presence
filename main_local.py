@@ -7,7 +7,9 @@ from xml.etree import ElementTree as ET
 client_id = "1454009737778561067"
 lastfm_key = "401228c37da23c23dcae477deee917e9" 
 lastfm_name = "egelwhi"
-lastfm_url = "https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user={}&api_key={}&limit=1"
+lastfm_url = "https://ws.audioscrobbler.com/2.0/?method={}"
+user_track_method = "user.getrecenttracks"
+track_info_method = "track.getInfo"
 check_interval = 10
 
 class update:
@@ -37,14 +39,26 @@ class update:
         self.counter = 0
 
 def get_user_state():
-    response = requests.get(lastfm_url.format(lastfm_name, lastfm_key))
+    response = requests.get(lastfm_url.format(user_track_method) + f"&user={lastfm_name}&api_key={lastfm_key}&limit=1")
+    return response.text
+
+def get_track_info(artist, track):
+    response = requests.get(lastfm_url.format(track_info_method) + f"&api_key={lastfm_key}&artist={artist}&track={track}")
     return response.text
 
 def parse_data(u):
     file = ET.fromstring(get_user_state())
     root = file.find('recenttracks/track')
     t_name = root.find('name').text
+    t_artist = root.find('artist').text
     pic = root.findall('image')[-1].text
+
+    track_info_xml = ET.fromstring(get_track_info(t_artist, t_name))
+    t_root = track_info_xml.find('track')
+    duration = int(t_root.find('duration').text)
+
+    if(duration is None):
+        duration = 0
 
     playing = False
     if (len(root.keys()) > 0):
@@ -61,11 +75,12 @@ def parse_data(u):
     return {
         'now_playing': playing,
         'title': t_name,
-        'artist': root.find('artist').text,
+        'artist': t_artist,
         'album': root.find('album').text,
         'l_image': pic,
         's_url': root.find('url').text,
-        'u_start': u.time
+        'u_start': u.time,
+        'duration': duration
     }
 
 def print_song_info(u, song):

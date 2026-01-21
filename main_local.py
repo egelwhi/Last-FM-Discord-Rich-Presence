@@ -102,7 +102,7 @@ def update_discord_presence(u, RPC, song):
             details=f"Listening to {song['title']}",
             state=f"by {song['artist']}",
             large_image=song['l_image'],
-            large_text=song['title'],
+            large_text=song['album'],
             start=int(song['u_start']),
             buttons=[{"label": "Check it out on Last.fm", "url": song['s_url']}]
         )

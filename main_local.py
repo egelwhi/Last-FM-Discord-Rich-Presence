@@ -11,6 +11,7 @@ lastfm_url = "https://ws.audioscrobbler.com/2.0/?method={}"
 user_track_method = "user.getrecenttracks"
 track_info_method = "track.getInfo"
 check_interval = 10
+pp_strategy = 1  # 0 for traditional, 1 for dynamic
 
 class update:
     name = ""
@@ -91,8 +92,7 @@ def print_song_info(u, song):
         print(f"Last Played: {song['artist']} - {song['title']}")
     print("------------------------------")
 
-def update_discord_presence(u, RPC):
-    song = parse_data(u)
+def update_discord_presence(u, RPC, song):
     print_song_info(u, song)
 
     if song['now_playing'] == True:
@@ -121,18 +121,28 @@ def update_discord_presence(u, RPC):
         
         u.clear_counter()
 
-    
+def push_pull_strategy(u, RPC):
+    song = parse_data(u)
+    if(pp_strategy == 1):
+        update_discord_presence(u, RPC, song)
+        time.sleep(check_interval)
+    else: #not finished yet
+        update_discord_presence(u, RPC, song)
+        time.sleep(check_interval)
 
 def main():
     RPC = Presence(client_id)
     RPC.connect()
     print("Successfully connected to Discord.")
+    if pp_strategy == 0:
+        print("Using traditional Strategy")
+    else:
+        print("Using dynamic Strategy")
     u = update()
 
     while True:
         try:
-            update_discord_presence(u, RPC)
-            time.sleep(check_interval)
+            push_pull_strategy(u, RPC)
         except Exception as e:
             print(f"Script crashed: {e}")
             print("Restarting in 5 seconds...")

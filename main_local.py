@@ -1,8 +1,10 @@
+import json
 from pypresence import Presence
 from pypresence.types import ActivityType
 import time
 import requests
 from xml.etree import ElementTree as ET
+from pathlib import Path
 
 client_id = "1454009737778561067"
 lastfm_key = "401228c37da23c23dcae477deee917e9" 
@@ -10,6 +12,7 @@ lastfm_name = "egelwhi"
 lastfm_url = "https://ws.audioscrobbler.com/2.0/?method={}"
 user_track_method = "user.getrecenttracks"
 track_info_method = "track.getInfo"
+file_path = Path("./config.json")
 check_interval = 10
 pp_strategy = 1  # 0 for traditional, 1 for dynamic
 
@@ -127,7 +130,8 @@ def push_pull_strategy(u, RPC):
         update_discord_presence(u, RPC, song)
         time.sleep(check_interval)
 
-def main():
+
+def start_process():
     RPC = Presence(client_id)
     RPC.connect()
     print("Successfully connected to Discord.")
@@ -145,4 +149,32 @@ def main():
             print("Restarting in 5 seconds...")
             time.sleep(5)
 
-main()
+def set_user_data(client_id_local, lastfm_key_local, lastfm_name_local, check_interval_local, pp_strategy_local):
+    global client_id, lastfm_key, lastfm_name, check_interval, pp_strategy
+    if (file_path.exists()):
+        with open(file_path, "r") as file:
+            data = json.load(file)
+            client_id_local = data.get("client_id", client_id_local)
+            lastfm_key_local = data.get("lastfm_key", lastfm_key_local)
+            lastfm_name_local = data.get("lastfm_name", lastfm_name_local)
+            check_interval_local = data.get("check_interval", check_interval_local)
+            pp_strategy_local = data.get("pp_strategy", pp_strategy_local)
+    else:
+        client_id = client_id_local
+        lastfm_key = lastfm_key_local
+        lastfm_name = lastfm_name_local
+        check_interval = check_interval_local
+        pp_strategy = pp_strategy_local
+        with open(file_path, "w") as file:
+            json.dump({
+                "client_id": client_id_local,
+                "lastfm_key": lastfm_key_local,
+                "lastfm_name": lastfm_name_local,
+                "check_interval": check_interval_local,
+                "pp_strategy": pp_strategy_local
+            }, file, indent=4)
+
+    start_process()
+
+if __name__ == "__main__":
+    set_user_data(client_id, lastfm_key, lastfm_name, check_interval, pp_strategy)

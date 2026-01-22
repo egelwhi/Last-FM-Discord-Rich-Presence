@@ -1,4 +1,4 @@
-from pypresence import Presence # type: ignore
+from pypresence import Presence
 from pypresence.types import ActivityType
 import time
 import requests
@@ -106,8 +106,6 @@ def update_discord_presence(u, RPC, song):
             start=int(song['u_start']),
             buttons=[{"label": "Check it out on Last.fm", "url": song['s_url']}]
         )
-
-        u.increment_counter()
     else:
         RPC.update(
             activity_type=ActivityType.LISTENING,
@@ -118,11 +116,10 @@ def update_discord_presence(u, RPC, song):
             large_text=song['title'],
             buttons=[{"label": "Check it out on Last.fm", "url": song['s_url']}]
         )
-        
-        u.clear_counter()
 
 def push_pull_strategy(u, RPC):
     song = parse_data(u)
+    u.increment_counter()
     if(pp_strategy == 1):
         update_discord_presence(u, RPC, song)
         time.sleep(check_interval)

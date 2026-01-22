@@ -154,11 +154,11 @@ def set_user_data(client_id_local, lastfm_key_local, lastfm_name_local, check_in
     if (file_path.exists()):
         with open(file_path, "r") as file:
             data = json.load(file)
-            client_id_local = data.get("client_id", client_id_local)
-            lastfm_key_local = data.get("lastfm_key", lastfm_key_local)
-            lastfm_name_local = data.get("lastfm_name", lastfm_name_local)
-            check_interval_local = data.get("check_interval", check_interval_local)
-            pp_strategy_local = data.get("pp_strategy", pp_strategy_local)
+            client_id = data.get("client_id")
+            lastfm_key = data.get("lastfm_key")
+            lastfm_name = data.get("lastfm_name")
+            check_interval = data.get("check_interval")
+            pp_strategy = data.get("pp_strategy")
     else:
         client_id = client_id_local
         lastfm_key = lastfm_key_local

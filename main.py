@@ -5,6 +5,7 @@ import time
 import requests
 from xml.etree import ElementTree as ET
 from pathlib import Path
+import sys
 
 client_id = "" 
 lastfm_key = ""
@@ -15,6 +16,7 @@ track_info_method = "track.getInfo"
 file_path = Path("./config.json")
 check_interval = 10
 pp_strategy = 1  # 0 for traditional, 1 for dynamic
+kill_switch = False
 
 class update:
     name = ""
@@ -154,13 +156,18 @@ def start_process():
         print("Using dynamic Strategy")
     u = update()
 
-    while True:
+    while not kill_switch:
         try:
             push_pull_strategy(u, RPC)
         except Exception as e:
             print(f"Script crashed: {e}")
             print("Restarting in 5 seconds...")
             time.sleep(5)
+    
+    RPC.clear()
+    RPC.close()
+    print("Discord Rich Presence stopped.")
+    sys.exit()
 
 #set user data and save to config file, and start the process
 def set_user_data(client_id_local, lastfm_key_local, lastfm_name_local, check_interval_local, pp_strategy_local):

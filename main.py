@@ -51,31 +51,38 @@ def get_track_info(artist, track):
     return response.text
 
 def parse_data(u):
+    #get user recent track data
     file = ET.fromstring(get_user_state())
     root = file.find('recenttracks/track')
     t_name = root.find('name').text
     t_artist = root.find('artist').text
     pic = root.findall('image')[-1].text
 
+    #get track info data of the current track
     track_info_xml = ET.fromstring(get_track_info(t_artist, t_name))
     t_root = track_info_xml.find('track')
     duration = int(t_root.find('duration').text)
 
+    #handle None duration
     if(duration is None):
         duration = 0
 
+    #check if now playing
     playing = False
     if (len(root.keys()) > 0):
         playing = True
 
+    #check is track has changed, if yes reset time
     update_check = u.name
     if(update_check == "" or update_check != t_name):
         u.change_name(t_name)
         u.change_time(time.time())
 
+    #set default image if none
     if(pic is None or pic == "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.png"):
         pic = "https://images.gameinfo.io/pokemon/256/p79f447.png"
 
+    #return data as dictionary
     return {
         'now_playing': playing,
         'title': t_name,
@@ -87,6 +94,7 @@ def parse_data(u):
         'duration': duration
     }
 
+#print song info to console
 def print_song_info(u, song):
     print("------------------------------")
     if song['now_playing']:
@@ -95,6 +103,7 @@ def print_song_info(u, song):
         print(f"Last Played: {song['artist']} - {song['title']}")
     print("------------------------------")
 
+#update Discord presence
 def update_discord_presence(u, RPC, song):
     print_song_info(u, song)
 
@@ -120,17 +129,21 @@ def update_discord_presence(u, RPC, song):
             buttons=[{"label": "Check it out on Last.fm", "url": song['s_url']}]
         )
 
+#push-pull strategy handler
 def push_pull_strategy(u, RPC):
     song = parse_data(u)
     u.increment_counter()
     if(pp_strategy == 1):
+        #dynamic strategy
+        #not fully implemented yet, for now just behaves like traditional
         update_discord_presence(u, RPC, song)
         time.sleep(check_interval)
-    else: #not finished yet
+    else: 
+        #traditional strategy, check every interval if song has changed
         update_discord_presence(u, RPC, song)
         time.sleep(check_interval)
 
-
+#start the main process
 def start_process():
     RPC = Presence(client_id)
     RPC.connect()
@@ -149,6 +162,7 @@ def start_process():
             print("Restarting in 5 seconds...")
             time.sleep(5)
 
+#set user data and save to config file, and start the process
 def set_user_data(client_id_local, lastfm_key_local, lastfm_name_local, check_interval_local, pp_strategy_local):
     global client_id, lastfm_key, lastfm_name, check_interval, pp_strategy
     if (file_path.exists()):

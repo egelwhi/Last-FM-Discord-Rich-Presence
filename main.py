@@ -17,6 +17,7 @@ file_path = Path("./config.json")
 check_interval = 10
 pp_strategy = 1  # 0 for traditional, 1 for dynamic
 kill_switch = False
+stop_switch = False
 
 class update:
     name = ""
@@ -131,6 +132,24 @@ def update_discord_presence(u, RPC, song):
             buttons=[{"label": "Check it out on Last.fm", "url": song['s_url']}]
         )
 
+#stall for given seconds with kill switch check
+def stall(seconds, RPC):
+    c = 0
+    if check_interval >= 1:
+        while c < seconds:
+            if(kill_switch):
+                RPC.clear()
+                RPC.close()
+                sys.exit()
+            time.sleep(1)
+            c += 1
+    else:
+        if(kill_switch):
+            RPC.clear()
+            RPC.close()
+            sys.exit()
+        time.sleep(seconds)
+
 #push-pull strategy handler
 def push_pull_strategy(u, RPC):
     song = parse_data(u)
@@ -139,11 +158,11 @@ def push_pull_strategy(u, RPC):
         #dynamic strategy
         #not fully implemented yet, for now just behaves like traditional
         update_discord_presence(u, RPC, song)
-        time.sleep(check_interval)
+        stall(check_interval, RPC)
     else: 
         #traditional strategy, check every interval if song has changed
         update_discord_presence(u, RPC, song)
-        time.sleep(check_interval)
+        stall(check_interval, RPC)
 
 #start the main process
 def start_process():
@@ -161,8 +180,8 @@ def start_process():
             push_pull_strategy(u, RPC)
         except Exception as e:
             print(f"Script crashed: {e}")
-            print("Restarting in 5 seconds...")
-            time.sleep(5)
+            print("Restarting in 2 seconds...")
+            time.sleep(2)
     
     RPC.clear()
     RPC.close()

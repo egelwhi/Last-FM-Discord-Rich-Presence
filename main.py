@@ -6,6 +6,8 @@ import requests
 from xml.etree import ElementTree as ET
 from pathlib import Path
 import sys
+import asyncio
+import warnings
 
 client_id = "" 
 lastfm_key = ""
@@ -133,10 +135,21 @@ def update_discord_presence(u, RPC, song):
 
 #kill the Discord presence
 def kill(RPC):
-    RPC.clear()
-    RPC.close()
-    print("Discord Rich Presence stopped.\n")
-    sys.exit()
+    try:
+        RPC.clear()
+        RPC.close()
+        print("Discord Rich Presence stopped.\n")
+        
+        # Give asyncio time to clean up pipe transports on Windows
+        time.sleep(0.5)
+        
+        # Suppress ResourceWarning for unclosed transports (Windows asyncio known issue)
+        warnings.filterwarnings("ignore", category=ResourceWarning)
+        
+        sys.exit()
+    except Exception as e:
+        print(f"Error closing RPC: {e}")
+        sys.exit()
 
 #stall for given seconds with kill switch check
 def stall(seconds, RPC):
@@ -172,7 +185,7 @@ def start_process():
         RPC = Presence(client_id)
         RPC.connect()
     except Exception as e:
-        print(f"Failed to connect to Discord: {e}")
+        print(e)
         sys.exit()
     
     print("Successfully connected to Discord.")

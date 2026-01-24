@@ -6,8 +6,7 @@ import requests
 from xml.etree import ElementTree as ET
 from pathlib import Path
 import sys
-import asyncio
-import warnings
+import os
 
 client_id = "" 
 lastfm_key = ""
@@ -139,13 +138,7 @@ def kill(RPC):
         RPC.clear()
         RPC.close()
         print("Discord Rich Presence stopped.\n")
-        
-        # Give asyncio time to clean up pipe transports on Windows
-        time.sleep(0.5)
-        
-        # Suppress ResourceWarning for unclosed transports (Windows asyncio known issue)
-        warnings.filterwarnings("ignore", category=ResourceWarning)
-        
+        # Use os._exit() to skip Python cleanup and avoid asyncio ResourceWarning
         sys.exit()
     except Exception as e:
         print(f"Error closing RPC: {e}")
@@ -186,7 +179,8 @@ def start_process():
         RPC.connect()
     except Exception as e:
         print(e)
-        sys.exit()
+        print("Failed to connect to Discord. Please check your Client ID and ensure Discord is running.")
+        os._exit(0)
     
     print("Successfully connected to Discord.")
     if pp_strategy == 0:

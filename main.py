@@ -17,7 +17,6 @@ file_path = Path("./config.json")
 check_interval = 10
 pp_strategy = 1  # 0 for traditional, 1 for dynamic
 kill_switch = False
-stop_switch = False
 
 class update:
     name = ""
@@ -132,22 +131,25 @@ def update_discord_presence(u, RPC, song):
             buttons=[{"label": "Check it out on Last.fm", "url": song['s_url']}]
         )
 
+#kill the Discord presence
+def kill(RPC):
+    RPC.clear()
+    RPC.close()
+    print("Discord Rich Presence stopped.\n")
+    sys.exit()
+
 #stall for given seconds with kill switch check
 def stall(seconds, RPC):
     c = 0
     if check_interval >= 1:
         while c < seconds:
             if(kill_switch):
-                RPC.clear()
-                RPC.close()
-                sys.exit()
-            time.sleep(1)
+                kill(RPC)
+            time.sleep(0.5)
             c += 1
     else:
         if(kill_switch):
-            RPC.clear()
-            RPC.close()
-            sys.exit()
+            kill(RPC)
         time.sleep(seconds)
 
 #push-pull strategy handler
@@ -166,8 +168,13 @@ def push_pull_strategy(u, RPC):
 
 #start the main process
 def start_process():
-    RPC = Presence(client_id)
-    RPC.connect()
+    try:
+        RPC = Presence(client_id)
+        RPC.connect()
+    except Exception as e:
+        print(f"Failed to connect to Discord: {e}")
+        sys.exit()
+    
     print("Successfully connected to Discord.")
     if pp_strategy == 0:
         print("Using traditional Strategy")
@@ -183,43 +190,36 @@ def start_process():
             print("Restarting in 2 seconds...")
             time.sleep(2)
     
-    RPC.clear()
-    RPC.close()
-    print("Discord Rich Presence stopped.")
-    sys.exit()
+    kill(RPC)
 
 #set user data and save to config file, and start the process
-def set_user_data(client_id_local, lastfm_key_local, lastfm_name_local, check_interval_local, pp_strategy_local):
+def set_user_data():
     global client_id, lastfm_key, lastfm_name, check_interval, pp_strategy
     if (file_path.exists()):
         with open(file_path, "r") as file:
             data = json.load(file)
-            client_id = data.get("client_id")
-            lastfm_key = data.get("lastfm_key")
-            lastfm_name = data.get("lastfm_name")
-            check_interval = data.get("check_interval")
-            pp_strategy = data.get("pp_strategy")
+            if ("client_id" in data and "lastfm_key" in data and "lastfm_name" in data and "check_interval" in data and "pp_strategy" in data):
+                client_id = data.get("client_id")
+                lastfm_key = data.get("lastfm_key")
+                lastfm_name = data.get("lastfm_name")
+                check_interval = data.get("check_interval")
+                pp_strategy = data.get("pp_strategy")
     else:
-        client_id = client_id_local
-        lastfm_key = lastfm_key_local
-        lastfm_name = lastfm_name_local
-        check_interval = check_interval_local
-        pp_strategy = pp_strategy_local
+        client_id = input("Enter your Discord Client ID: ")
+        lastfm_key = input("Enter your Last.fm API Key: ")
+        lastfm_name = input("Enter your Last.fm Username: ")
+        check_interval = int(input("Enter the check interval in seconds: "))
+        pp_strategy = int(input("Enter the push-pull strategy (0 or 1): "))
         with open(file_path, "w") as file:
             json.dump({
-                "client_id": client_id_local,
-                "lastfm_key": lastfm_key_local,
-                "lastfm_name": lastfm_name_local,
-                "check_interval": check_interval_local,
-                "pp_strategy": pp_strategy_local
+                "client_id": client_id,
+                "lastfm_key": lastfm_key,
+                "lastfm_name": lastfm_name,
+                "check_interval": check_interval,
+                "pp_strategy": pp_strategy
             }, file, indent=4)
 
     start_process()
 
 if __name__ == "__main__":
-    #for direct run
-    if (file_path.exists()):
-        with open(file_path, "r") as file:
-            data = json.load(file)
-            set_user_data(data.get("client_id", client_id), data.get("lastfm_key", lastfm_key), data.get("lastfm_name", lastfm_name), data.get("check_interval", check_interval), data.get("pp_strategy", pp_strategy))
-    set_user_data(input("Enter your Discord Client ID: "), input("Enter your Last.fm API Key: "), input("Enter your Last.fm Username: "), int(input("Enter the check interval in seconds: ")), int(input("Enter the push-pull strategy (0 or 1): ")))
+    set_user_data()

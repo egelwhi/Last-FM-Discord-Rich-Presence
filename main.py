@@ -131,6 +131,7 @@ def update_discord_presence(u, RPC, song):
             large_text=song['title'],
             buttons=[{"label": "Check it out on Last.fm", "url": song['s_url']}]
         )
+        u.clear_counter()
 
 #kill the Discord presence
 def kill(RPC):
@@ -138,7 +139,6 @@ def kill(RPC):
         RPC.clear()
         RPC.close()
         print("Discord Rich Presence stopped.\n")
-        # Use os._exit() to skip Python cleanup and avoid asyncio ResourceWarning
         sys.exit()
     except Exception as e:
         print(f"Error closing RPC: {e}")
@@ -152,7 +152,7 @@ def stall(seconds, RPC):
             if(kill_switch):
                 kill(RPC)
             time.sleep(0.5)
-            c += 1
+            c += 0.5
     else:
         if(kill_switch):
             kill(RPC)
@@ -180,6 +180,8 @@ def start_process():
     except Exception as e:
         print(e)
         print("Failed to connect to Discord. Please check your Client ID and ensure Discord is running.")
+        os.remove(file_path)
+        print("Configuration file deleted. Please restart the script to re-enter your details.")
         os._exit(0)
     
     print("Successfully connected to Discord.")

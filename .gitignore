@@ -1,6 +1,11 @@
 # Ignore Python virtual environment
 venv/
 
+build/
+dist/
+
+*.spec
+
 # Ignore all JSON files
 *.json
 

@@ -8,6 +8,30 @@ from pathlib import Path
 import sys
 import os
 
+# Ensure UTF-8 output on Windows consoles to avoid 'gbk' encode errors
+# Guard against `sys.stdout`/`sys.stderr` being None (windowed exe with no console)
+try:
+    if getattr(sys.stdout, 'reconfigure', None):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if getattr(sys.stderr, 'reconfigure', None):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    import io
+    try:
+        # If stdout/stderr is None (pyinstaller --windowed), attach a memory buffer
+        if sys.stdout is None:
+            sys.stdout = io.TextIOWrapper(io.BytesIO(), encoding='utf-8', errors='replace', line_buffering=True)
+        elif hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+
+        if sys.stderr is None:
+            sys.stderr = io.TextIOWrapper(io.BytesIO(), encoding='utf-8', errors='replace', line_buffering=True)
+        elif hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    except Exception:
+        # Best-effort only; if this fails, continue without replacing streams
+        pass
+
 client_id = "" 
 lastfm_key = ""
 lastfm_name = ""
@@ -253,7 +277,7 @@ def start_process():
 def set_user_data():
     global client_id, lastfm_key, lastfm_name, check_interval, pp_strategy
     if (file_path.exists()):
-        with open(file_path, "r") as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
             if ("client_id" in data and "lastfm_key" in data and "lastfm_name" in data and "check_interval" in data and "pp_strategy" in data):
                 client_id = data.get("client_id")
@@ -267,7 +291,7 @@ def set_user_data():
         lastfm_name = input("Enter your Last.fm Username: ")
         check_interval = int(input("Enter the check interval in seconds: "))
         pp_strategy = int(input("Enter the push-pull strategy (0 or 1): "))
-        with open(file_path, "w") as file:
+        with open(file_path, "w", encoding="utf-8") as file:
             json.dump({
                 "client_id": client_id,
                 "lastfm_key": lastfm_key,

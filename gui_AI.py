@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import subprocess
 import main
+import shutil
 import pystray
 from PIL import Image, ImageDraw, ImageTk
 import requests
@@ -602,7 +603,22 @@ class LastFMGUI:
             self.save_config()
             
             try:
-                self.rpc_thread = subprocess.Popen([sys.executable, "-u", "main.py", self.config['client_id'], self.config['lastfm_key'], self.config['lastfm_name'], str(self.config['check_interval']), str(self.config['pp_strategy'])], stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1, text=True)
+                # When running as a frozen executable, sys.executable is the exe itself.
+                # Avoid relaunching the same exe (which would recreate the GUI) by
+                # preferring a system Python executable if available.
+                interpreter = sys.executable
+                if getattr(sys, 'frozen', False):
+                    py = shutil.which("python") or shutil.which("py")
+                    if py:
+                        interpreter = py
+                    else:
+                        # No external python found; run the main service in-process as a fallback.
+                        self.log_message("No external Python found; running service in-process.")
+                        t = threading.Thread(target=main.set_user_data, daemon=True)
+                        t.start()
+                        return
+
+                self.rpc_thread = subprocess.Popen([interpreter, "-u", "main.py", self.config['client_id'], self.config['lastfm_key'], self.config['lastfm_name'], str(self.config['check_interval']), str(self.config['pp_strategy'])], stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1, text=True, encoding='utf-8', errors='replace')
                 # Start streaming subprocess output into GUI log
                 self.stream_process_output(self.rpc_thread)
             except Exception as e:

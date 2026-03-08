@@ -54,57 +54,105 @@ def get_track_info(artist, track):
     return response.text
 
 def parse_data(u):
-    #get user recent track data
-    file = ET.fromstring(get_user_state())
+    default_pic = "https://images.gameinfo.io/pokemon/256/p79f447.png"
+
+    # get user recent track data and handle parse errors
+    try:
+        file = ET.fromstring(get_user_state())
+    except Exception:
+        return {
+            'now_playing': False,
+            'title': '',
+            'artist': '',
+            'album': '',
+            'l_image': default_pic,
+            's_url': '',
+            'u_start': u.time,
+            'duration': 0
+        }
+
     root = file.find('recenttracks/track')
-    t_name = root.find('name').text
-    t_artist = root.find('artist').text
-    pic = root.findall('image')[-1].text
+    if root is None:
+        return {
+            'now_playing': False,
+            'title': '',
+            'artist': '',
+            'album': '',
+            'l_image': default_pic,
+            's_url': '',
+            'u_start': u.time,
+            'duration': 0
+        }
 
-    #get track info data of the current track
-    track_info_xml = ET.fromstring(get_track_info(t_artist, t_name))
-    t_root = track_info_xml.find('track')
-    duration = int(t_root.find('duration').text)
+    def safe_text(elem, tag, default=""):
+        if elem is None:
+            return default
+        child = elem.find(tag)
+        if child is None or child.text is None:
+            return default
+        return child.text
 
-    #handle None duration
-    if(duration is None):
+    t_name = safe_text(root, 'name', '')
+    t_artist = safe_text(root, 'artist', '')
+
+    images = root.findall('image') or []
+    pic = default_pic
+    if images:
+        last_img = images[-1]
+        if last_img is not None and last_img.text:
+            pic = last_img.text
+
+    # get track info data of the current track (may fail)
+    duration = 0
+    try:
+        track_info_xml = ET.fromstring(get_track_info(t_artist, t_name))
+        t_root = track_info_xml.find('track')
+        if t_root is not None:
+            dur_text = safe_text(t_root, 'duration', None)
+            if dur_text:
+                try:
+                    duration = int(dur_text)
+                except ValueError:
+                    duration = 0
+    except Exception:
         duration = 0
 
-    #check if now playing
+    # check if now playing
     playing = False
-    if (len(root.keys()) > 0):
-        playing = True
+    try:
+        if root is not None and len(root.keys()) > 0:
+            playing = True
+    except Exception:
+        playing = False
 
-    #check is track has changed, if yes reset time
+    # check if track has changed, if yes reset time
     update_check = u.name
-    if(update_check == "" or update_check != t_name):
+    if update_check == "" or update_check != t_name:
         u.change_name(t_name)
         u.change_time(time.time())
 
-    #set default image if none
-    if(pic is None or pic == "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.png"):
-        pic = "https://images.gameinfo.io/pokemon/256/p79f447.png"
+    # set default image if placeholder or missing
+    if pic is None or pic == "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.png":
+        pic = default_pic
 
-    #return data as dictionary
+    # return data as dictionary (use safe_text for optional fields)
     return {
         'now_playing': playing,
         'title': t_name,
         'artist': t_artist,
-        'album': root.find('album').text,
+        'album': safe_text(root, 'album', 'N/A'),
         'l_image': pic,
-        's_url': root.find('url').text,
+        's_url': safe_text(root, 'url', ''),
         'u_start': u.time,
         'duration': duration
     }
 
 #print song info to console
 def print_song_info(u, song):
-    print("------------------------------")
     if song['now_playing']:
         print(f"{u.counter}. Now Playing: {song['artist']} - {song['title']} ... Duration: {int(time.time() - song['u_start'])} seconds \n Album: {song['album']} \n URL: {song['s_url']} \n Image: {song['l_image']}")
     else:
-        print(f"Last Played: {song['artist']} - {song['title']}")
-    print("------------------------------")
+        print(f"Last Played: {song['artist']} - {song['title']}  \n Album: {song['album']} \n URL: {song['s_url']} \n Image: {song['l_image']}")
 
 #update Discord presence
 def update_discord_presence(u, RPC, song):

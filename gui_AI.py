@@ -814,6 +814,11 @@ class LastFMGUI:
             
             # Save config before starting
             self.save_config()
+            # Ensure any previous stop signal is cleared so the service can restart
+            try:
+                main.kill_switch = False
+            except Exception:
+                pass
             
             try:
                 # If running as a frozen executable, run the service in-process
@@ -874,17 +879,14 @@ class LastFMGUI:
                     # If rpc_thread is a threading.Thread (in-process run), join it
                     if isinstance(self.rpc_thread, threading.Thread):
                         try:
-                            # signal is via main.kill_switch already set above
+                            # For in-process (frozen) runs: signal the main loop to stop
+                            # via main.kill_switch and allow the background thread to
+                            # perform clean shutdown (it restores streams in its
+                            # finally block). Avoid joining or restoring streams here
+                            # — joining on the GUI thread or touching streams can
+                            # cause the frozen exe to terminate unexpectedly.
                             if self.rpc_thread.is_alive():
-                                self.rpc_thread.join(timeout=3)
-                        except Exception:
-                            pass
-                        # restore streams if needed
-                        try:
-                            if hasattr(self, '_orig_stdout'):
-                                sys.stdout = self._orig_stdout
-                            if hasattr(self, '_orig_stderr'):
-                                sys.stderr = self._orig_stderr
+                                self.log_message("Signaled in-process service to stop; waiting for cleanup.")
                         except Exception:
                             pass
                     else:

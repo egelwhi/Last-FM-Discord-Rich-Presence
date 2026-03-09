@@ -208,13 +208,34 @@ def update_discord_presence(u, RPC, song):
 #kill the Discord presence
 def kill(RPC):
     try:
-        RPC.clear()
-        RPC.close()
+        # Make kill idempotent: if we've already closed this RPC, skip.
+        if RPC is None:
+            return
+        if getattr(RPC, '_closed_by_script', False):
+            return
+
+        try:
+            RPC.clear()
+        except Exception as e:
+            # Ignore benign "Event loop is closed" errors from asyncio internals
+            if 'Event loop is closed' not in str(e):
+                print(f"Error clearing RPC: {e}")
+
+        try:
+            RPC.close()
+        except Exception as e:
+            if 'Event loop is closed' not in str(e):
+                print(f"Error closing RPC: {e}")
+
+        # Mark as closed so subsequent calls are no-ops
+        try:
+            setattr(RPC, '_closed_by_script', True)
+        except Exception:
+            pass
+
         print("Discord Rich Presence stopped.\n")
-        sys.exit()
     except Exception as e:
         print(f"Error closing RPC: {e}")
-        sys.exit()
 
 #stall for given seconds with kill switch check
 def stall(seconds, RPC):
@@ -222,12 +243,21 @@ def stall(seconds, RPC):
     if check_interval >= 1:
         while c < seconds:
             if(kill_switch):
-                kill(RPC)
+                # Call kill once and immediately return to stop the loop.
+                try:
+                    kill(RPC)
+                except Exception:
+                    pass
+                return
             time.sleep(0.5)
             c += 0.5
     else:
         if(kill_switch):
-            kill(RPC)
+            try:
+                kill(RPC)
+            except Exception:
+                pass
+            return
         time.sleep(seconds)
 
 #push-pull strategy handler

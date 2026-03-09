@@ -183,6 +183,47 @@ class LastFMGUI:
         with open(self.config_path, "w") as file:
             json.dump(self.config, file, indent=4)
         self.log_message("Configuration saved.")
+
+    def validate_config(self):
+        """Enable the Start button only when required config fields are filled and valid.
+
+        Fields required: client_id, lastfm_key, lastfm_name, check_interval (int >=1)
+        """
+        try:
+            # If start_button not created yet, do nothing
+            if not hasattr(self, 'start_button'):
+                return
+
+            # If service is already running, keep Start disabled
+            if getattr(self, 'is_running', False):
+                try:
+                    self.start_button.config(state='disabled')
+                except Exception:
+                    pass
+                return
+
+            cid = (self.client_id_var.get() or '').strip()
+            key = (self.lastfm_key_var.get() or '').strip()
+            name = (self.lastfm_name_var.get() or '').strip()
+            interval = (self.check_interval_var.get() or '').strip()
+
+            valid = True
+            if not cid or not key or not name:
+                valid = False
+            else:
+                try:
+                    ival = int(interval)
+                    if ival < 1:
+                        valid = False
+                except Exception:
+                    valid = False
+
+            try:
+                self.start_button.config(state='normal' if valid else 'disabled')
+            except Exception:
+                pass
+        except Exception:
+            pass
     
     def create_widgets(self):
         # Create GUI elements"""
@@ -227,6 +268,16 @@ class LastFMGUI:
         check_interval_spinbox = ttk.Spinbox(config_frame, from_=1, to=60, textvariable=self.check_interval_var, width=10)
         check_interval_spinbox.grid(row=3, column=1, sticky="w", pady=8)
 
+        # Attach validation traces to config fields so Start button updates
+        try:
+            # traces may fire before start_button exists; validate_config handles that
+            self.client_id_var.trace_add('write', lambda *a: self.validate_config())
+            self.lastfm_key_var.trace_add('write', lambda *a: self.validate_config())
+            self.lastfm_name_var.trace_add('write', lambda *a: self.validate_config())
+            self.check_interval_var.trace_add('write', lambda *a: self.validate_config())
+        except Exception:
+            pass
+
         # Strategy
         ttk.Label(config_frame, text="Update Strategy:", font=("Arial", 10)).grid(row=4, column=0, sticky="w", pady=8)
         self.pp_strategy_var = tk.IntVar(value=self.config.get("pp_strategy", 1))
@@ -246,6 +297,12 @@ class LastFMGUI:
         # Start Button
         self.start_button = ttk.Button(control_frame, text="Start", command=self.start_service)
         self.start_button.pack(side="left", padx=5)
+
+        # Ensure start button reflects current config validity
+        try:
+            self.validate_config()
+        except Exception:
+            pass
 
         # Stop Button
         self.stop_button = ttk.Button(control_frame, text="Stop", command=self.stop_service, state="disabled")
@@ -439,6 +496,162 @@ class LastFMGUI:
             self.stderr_thread = threading.Thread(target=reader, args=(proc.stderr, "ERR: "), daemon=True)
             self.stderr_thread.start()
 
+    # Internal helper: create a stream-like object that forwards writes to the GUI log
+    class _StreamWriter:
+        def __init__(self, gui, prefix=""):
+            self.gui = gui
+            self.prefix = prefix
+            self._buf = ""
+
+        def write(self, s):
+            try:
+                if not s:
+                    return
+                self._buf += s
+                while "\n" in self._buf:
+                    line, self._buf = self._buf.split("\n", 1)
+                    text = line.rstrip('\r')
+                    try:
+                        # log line in GUI
+                        self.gui.root.after(0, self.gui.log_message, f"{self.prefix}{text}")
+                        # also hand the raw text to the GUI parser (without ERR: prefix)
+                        # use root.after to ensure GUI thread safety
+                        self.gui.root.after(0, self.gui._handle_output_text, text)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        def flush(self):
+            return
+
+        # Provide minimal attributes some code may expect
+        def isatty(self):
+            return False
+
+        @property
+        def encoding(self):
+            return 'utf-8'
+
+    def _run_main_wrapper(self):
+        # Run main.set_user_data() and restore streams when finished
+        try:
+            main.set_user_data()
+        except Exception as e:
+            try:
+                self.root.after(0, self.log_message, f"Error in in-process service: {e}")
+            except Exception:
+                pass
+        finally:
+            try:
+                # restore original streams if we replaced them
+                if hasattr(self, '_orig_stdout'):
+                    sys.stdout = self._orig_stdout
+                else:
+                    sys.stdout = sys.__stdout__
+            except Exception:
+                pass
+            try:
+                if hasattr(self, '_orig_stderr'):
+                    sys.stderr = self._orig_stderr
+                else:
+                    sys.stderr = sys.__stderr__
+            except Exception:
+                pass
+
+            # Ensure GUI reflects stopped service
+            try:
+                self.is_running = False
+                self.root.after(0, lambda: self.service_running_var.set("Stopped"))
+                self.root.after(0, lambda: self.status_var.set("Stopped"))
+                self.root.after(0, lambda: self.status_label.config(foreground="red"))
+                self.root.after(0, lambda: self.start_button.config(state="normal"))
+                self.root.after(0, lambda: self.stop_button.config(state="disabled"))
+                self.root.after(0, self._clear_now_playing_display)
+                self.root.after(0, lambda: self.log_message("Service stopped."))
+            except Exception:
+                pass
+
+    def _handle_output_text(self, l):
+        # Parse a single output line (runs on GUI thread via root.after)
+        try:
+            text = l.strip()
+        except Exception:
+            text = l
+
+        # keep a partial dict for in-process parsing
+        if not hasattr(self, '_inproc_partial') or self._inproc_partial is None:
+            self._inproc_partial = {}
+
+        partial = self._inproc_partial
+
+        # Detect Now Playing line (may contain a leading counter like '1. ')
+        if "Now Playing:" in text:
+            try:
+                after = text.split("Now Playing:", 1)[1].strip()
+                if "..." in after:
+                    main_part = after.split("...")[0].strip()
+                elif "Duration" in after:
+                    main_part = after.split("Duration")[0].strip()
+                else:
+                    main_part = after
+                parts = main_part.split(" - ", 1)
+                artist = parts[0].strip() if len(parts) > 0 else ""
+                title = parts[1].strip() if len(parts) > 1 else ""
+            except Exception:
+                artist = ""
+                title = ""
+            partial.clear()
+            partial.update({"state": "Now Playing", "artist": artist, "title": title, "album": "", "s_url": "", "l_image": ""})
+            try:
+                self._update_current_song(partial.copy())
+            except Exception:
+                pass
+
+        # Detect Last Played
+        elif "Last Played:" in text:
+            try:
+                after = text.split("Last Played:", 1)[1].strip()
+                parts = after.split(" - ", 1)
+                artist = parts[0].strip() if len(parts) > 0 else ""
+                title = parts[1].strip() if len(parts) > 1 else ""
+            except Exception:
+                artist = ""
+                title = ""
+            partial.clear()
+            partial.update({"state": "Last Played", "artist": artist, "title": title, "album": "", "s_url": "", "l_image": ""})
+            try:
+                self._update_current_song(partial.copy())
+            except Exception:
+                pass
+
+        # Album line
+        elif text.startswith("Album:"):
+            try:
+                album = text.split("Album:", 1)[1].strip()
+                partial["album"] = album
+                self._update_current_song(partial.copy())
+            except Exception:
+                pass
+
+        # URL line
+        elif text.startswith("URL:"):
+            try:
+                s_url = text.split("URL:", 1)[1].strip()
+                partial["s_url"] = s_url
+                self._update_current_song(partial.copy())
+            except Exception:
+                pass
+
+        # Image line
+        elif text.startswith("Image:"):
+            try:
+                img = text.split("Image:", 1)[1].strip()
+                partial["l_image"] = img
+                self._update_current_song(partial.copy())
+            except Exception:
+                pass
+
     def _update_current_song(self, songdict):
         # Update stored song fields (called on the Tk main thread via root.after)
         try:
@@ -603,20 +816,31 @@ class LastFMGUI:
             self.save_config()
             
             try:
-                # When running as a frozen executable, sys.executable is the exe itself.
-                # Avoid relaunching the same exe (which would recreate the GUI) by
-                # preferring a system Python executable if available.
-                interpreter = sys.executable
+                # If running as a frozen executable, run the service in-process
+                # to avoid requiring a separate main.py file alongside the exe.
                 if getattr(sys, 'frozen', False):
-                    py = shutil.which("python") or shutil.which("py")
-                    if py:
-                        interpreter = py
-                    else:
-                        # No external python found; run the main service in-process as a fallback.
-                        self.log_message("No external Python found; running service in-process.")
-                        t = threading.Thread(target=main.set_user_data, daemon=True)
-                        t.start()
-                        return
+                    self.log_message("Running service in-process (frozen executable).")
+                    # Replace stdout/stderr so prints from main show up in the GUI
+                    try:
+                        self._orig_stdout = sys.stdout
+                        self._orig_stderr = sys.stderr
+                        sys.stdout = self._StreamWriter(self, "")
+                        sys.stderr = self._StreamWriter(self, "ERR: ")
+                    except Exception:
+                        pass
+
+                    # Run main in a background thread but keep handle so we can join on stop
+                    t = threading.Thread(target=self._run_main_wrapper, daemon=True)
+                    self.rpc_thread = t
+                    t.start()
+                    return
+
+                # When not frozen, prefer launching an external Python interpreter
+                # so the GUI process isn't blocked by the service.
+                interpreter = sys.executable
+                py = shutil.which("python") or shutil.which("py")
+                if py:
+                    interpreter = py
 
                 self.rpc_thread = subprocess.Popen([interpreter, "-u", "main.py", self.config['client_id'], self.config['lastfm_key'], self.config['lastfm_name'], str(self.config['check_interval']), str(self.config['pp_strategy'])], stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1, text=True, encoding='utf-8', errors='replace')
                 # Start streaming subprocess output into GUI log
@@ -647,16 +871,39 @@ class LastFMGUI:
             main.kill_switch = True
             try:
                 if self.rpc_thread:
-                    self.rpc_thread.terminate()
-                    self.rpc_thread.wait()
-                    print("Discord Rich Presence stopped.")
-                    try:
-                        if getattr(self.rpc_thread, 'stdout', None):
-                            self.rpc_thread.stdout.close()
-                        if getattr(self.rpc_thread, 'stderr', None):
-                            self.rpc_thread.stderr.close()
-                    except Exception:
-                        pass
+                    # If rpc_thread is a threading.Thread (in-process run), join it
+                    if isinstance(self.rpc_thread, threading.Thread):
+                        try:
+                            # signal is via main.kill_switch already set above
+                            if self.rpc_thread.is_alive():
+                                self.rpc_thread.join(timeout=3)
+                        except Exception:
+                            pass
+                        # restore streams if needed
+                        try:
+                            if hasattr(self, '_orig_stdout'):
+                                sys.stdout = self._orig_stdout
+                            if hasattr(self, '_orig_stderr'):
+                                sys.stderr = self._orig_stderr
+                        except Exception:
+                            pass
+                    else:
+                        # assume subprocess.Popen
+                        try:
+                            self.rpc_thread.terminate()
+                            self.rpc_thread.wait()
+                        except Exception:
+                            try:
+                                self.rpc_thread.kill()
+                            except Exception:
+                                pass
+                        try:
+                            if getattr(self.rpc_thread, 'stdout', None):
+                                self.rpc_thread.stdout.close()
+                            if getattr(self.rpc_thread, 'stderr', None):
+                                self.rpc_thread.stderr.close()
+                        except Exception:
+                            pass
                     if self.stdout_thread and self.stdout_thread.is_alive():
                         try:
                             self.stdout_thread.join(timeout=1)

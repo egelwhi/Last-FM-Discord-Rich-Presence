@@ -1,6 +1,6 @@
 ## Last.fm -> Discord RPC
 This is a simple application that gets your scrobble from Last.FM API, process it, and show it on your Discord Rich Presence. I built this for learning and for my own needs. This is a pure Python project.
-##Lib
+## Lib
 main:
 - pypresence
 - requests

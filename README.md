@@ -1,0 +1,1 @@
+## Last.fm -> Discord RPC

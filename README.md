@@ -7,7 +7,7 @@ main:
 GUI:
 - Pillow
 - pystray
-##Features
+## Features
 What this application provides
 * A simple GUI for user to start the service or stop the service, also monitor the current status
 * The main service can run by itself, GUI is not a must
